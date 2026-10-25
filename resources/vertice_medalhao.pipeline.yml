@@ -1,0 +1,15 @@
+# Pipeline declarativo (Lakeflow SDP, SQL): bronze → silver → gold
+# A silver usa o schema padrão do pipeline; a gold escreve com o nome completo (lakehouse_vertice.gold.x)
+resources:
+  pipelines:
+    vertice_medalhao:
+      name: vertice_medalhao
+      catalog: ${var.catalog}
+      schema: silver
+      serverless: true
+      photon: true
+      libraries:
+        - glob:
+            include: ../src/silver/**
+        - glob:
+            include: ../src/gold/**

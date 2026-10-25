@@ -1,0 +1,9 @@
+# O agente (Genie) que o dono usa, como código: o JSON sai de scripts/gerar_genie.py.
+# Precisa das tabelas existindo (inclusive a metric view mv_projetos): do zero, deploy → run → deploy.
+resources:
+  genie_spaces:
+    genie_farol:
+      title: "Farol · Diretoria"
+      description: "Pergunte em português sobre os projetos da Vértice: atraso, custo, gente parada e o que vai dar errado no próximo mês."
+      warehouse_id: ${var.warehouse_id}
+      file_path: ./farol.geniespace.json

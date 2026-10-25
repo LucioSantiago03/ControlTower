@@ -1,0 +1,42 @@
+# This is a Declarative Automation Bundle definition for Imersão - Jornada de Dados.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: Imersão - Jornada de Dados
+
+include:
+  - resources/*.yml
+
+# o app minha-torre/ é um bundle próprio: sem isso o deploy do vertice subiria o node_modules dele
+sync:
+  exclude:
+    - minha-torre/**
+
+variables:
+  catalog:
+    description: catálogo do lakehouse da Vértice
+    default: lakehouse_vertice
+  warehouse_id:
+    description: SQL warehouse das sql_task (Serverless Starter Warehouse)
+    default: 8a1781a35922ef35
+  s3_access_key_id:
+    description: chave do data lake (o valor fica fora do Git)
+  s3_secret_access_key:
+    description: chave do data lake (o valor fica fora do Git)
+
+targets:
+  dev:
+    # sem mode: development (ele prefixaria os nomes com [dev usuario]);
+    # o preset só garante que nenhum agendamento nasça ligado
+    default: true
+    presets:
+      trigger_pause_status: PAUSED
+    workspace:
+      host: https://dbc-2e589c58-2548.cloud.databricks.com
+
+  ## Optionally, there could be 'staging' or 'prod' targets here.
+  #
+  # prod:
+  #   workspace:
+  #     host: https://dbc-2e589c58-2548.cloud.databricks.com

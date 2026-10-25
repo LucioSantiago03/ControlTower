@@ -1,0 +1,98 @@
+# O job da Torre (vertice_farol), toda segunda às 6h. São 7 tarefas (6 da noite 3 + 1 da noite 4):
+#
+#   ingestao_feriados ──┐
+#                       ├── conferencia_bronze ── medalhao ──┬── testes_de_qualidade ──┬── metricas_governadas
+#   ingestao_data_lake ─┘                                    └── status_com_ia ────────┘
+#
+#   1. ingestao_feriados    notebook: feriados da BrasilAPI → bronze.feriados
+#   2. ingestao_data_lake   notebook: arquivos do data lake (boto3) → volume bronze.raw → 9 tabelas bronze
+#   3. conferencia_bronze   SQL: a bronze chegou inteira? (contagem de cada tabela, para o job se divergir)
+#   4. medalhao             pipeline vertice_medalhao: silver ×7 (as 3 ferramentas viram uma) e gold ×3
+#   5. testes_de_qualidade  SQL: 10 testes sobre silver e gold (cada um para o job se falhar)
+#   6. status_com_ia        SQL: o texto do status vira coluna (regra, IA nos últimos 90 dias, palavra-chave)
+#   7. metricas_governadas  SQL (noite 4): metric view gold.mv_projetos, a fórmula de cada KPI num lugar só
+#
+# Uma execução por vez: duas ingestões ao mesmo tempo apagariam a bronze uma da outra.
+resources:
+  jobs:
+    vertice_farol:
+      name: vertice_farol
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
+      # toda segunda às 6h (nasce pausado; o preset do target também garante isso)
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: America/Sao_Paulo
+        pause_status: PAUSED
+
+      tasks:
+        # 1. feriados da BrasilAPI → bronze.feriados
+        - task_key: ingestao_feriados
+          environment_key: Default
+          notebook_task:
+            notebook_path: ../src/ingestao/extractor_api_feriados.ipynb
+            source: WORKSPACE
+
+        # 1. arquivos do data lake (boto3) → volume bronze.raw → 9 tabelas bronze
+        - task_key: ingestao_data_lake
+          environment_key: Default
+          notebook_task:
+            notebook_path: ../src/ingestao/extractor_aws_dados.ipynb
+            base_parameters:
+              ACCESS_KEY: ${var.s3_access_key_id}
+              SECRET_KEY: ${var.s3_secret_access_key}
+            source: WORKSPACE
+
+        # 2. a bronze chegou inteira? (contagem de cada tabela contra o seed 42)
+        - task_key: conferencia_bronze
+          depends_on:
+            - task_key: ingestao_feriados
+            - task_key: ingestao_data_lake
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/conferencia/00-conferencia-bronze.sql
+
+        # 3. o pipeline declarativo: silver e gold
+        - task_key: medalhao
+          depends_on:
+            - task_key: conferencia_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.vertice_medalhao.id}
+
+        # 4. os 10 testes de qualidade sobre silver e gold (cada um para o job se falhar)
+        - task_key: testes_de_qualidade
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/testes/testes.sql
+
+        # 4. em paralelo com os testes: o texto livre do status vira coluna (gold.status_estruturado)
+        - task_key: status_com_ia
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/ia/status_estruturado.sql
+
+        # 5. noite 4: a fórmula de cada KPI num lugar só (metric view gold.mv_projetos),
+        #    depois que a gold passou nos testes e o status virou coluna
+        - task_key: metricas_governadas
+          depends_on:
+            - task_key: testes_de_qualidade
+            - task_key: status_com_ia
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/metricas/metricas.sql
+
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "6"
